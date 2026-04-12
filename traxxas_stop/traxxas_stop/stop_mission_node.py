@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+#obsoleto
 
 import time
 
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import Bool, Float32, String
+from std_msgs.msg import Bool, Float32
 
 
 class StopMissionManager(Node):
@@ -40,7 +40,6 @@ class StopMissionManager(Node):
 
         self.active_pub = self.create_publisher(Bool, '/traxxas/stop_sign/active', 10)
         self.speed_override_pub = self.create_publisher(Float32, '/traxxas/stop_sign/speed_override', 10)
-        self.state_pub = self.create_publisher(String, '/traxxas/stop_sign/state', 10)
         self.done_pub = self.create_publisher(Bool, '/traxxas/stop_sign/done', 10)
 
         self.timer = self.create_timer(0.05, self.update_state_machine)
@@ -53,7 +52,7 @@ class StopMissionManager(Node):
     def distance_callback(self, msg):
         self.distance_m = float(msg.data)
 
-    def publish_outputs(self, active, speed, state, done):
+    def publish_outputs(self, active, speed, done):
         active_msg = Bool()
         active_msg.data = active
         self.active_pub.publish(active_msg)
@@ -62,25 +61,25 @@ class StopMissionManager(Node):
         speed_msg.data = float(speed)
         self.speed_override_pub.publish(speed_msg)
 
-        state_msg = String()
-        state_msg.data = state
-        self.state_pub.publish(state_msg)
-
         done_msg = Bool()
         done_msg.data = done
         self.done_pub.publish(done_msg)
 
     def update_state_machine(self):
+        if self.stop_done and not self.confirmed:
+            self.stop_done = False
+            self.state = 'SEARCHING'
+            self.get_logger().info('Reset, listo para siguiente señal de alto')
+
         if self.stop_done:
-            self.state = 'DONE'
-            self.publish_outputs(False, self.cruise_speed, self.state, True)
+            self.publish_outputs(False, self.cruise_speed, True)
             return
 
         if self.state == 'SEARCHING':
             if self.confirmed and self.distance_m > 0.0 and self.distance_m <= self.prepare_distance:
                 self.state = 'APPROACHING'
 
-            self.publish_outputs(False, self.cruise_speed, self.state, False)
+            self.publish_outputs(False, self.cruise_speed, False)
             return
 
         if self.state == 'APPROACHING':
@@ -88,14 +87,14 @@ class StopMissionManager(Node):
                 if self.distance_m <= self.stop_distance:
                     self.state = 'STOPPED_WAITING'
                     self.stop_start_time = time.time()
-                    self.publish_outputs(True, 0.0, self.state, False)
+                    self.publish_outputs(True, 0.0, False)
                     return
 
                 if self.distance_m <= self.brake_distance:
-                    self.publish_outputs(True, self.brake_speed, self.state, False)
+                    self.publish_outputs(True, self.brake_speed, False)
                     return
 
-            self.publish_outputs(True, self.approach_speed, self.state, False)
+            self.publish_outputs(True, self.approach_speed, False)
             return
 
         if self.state == 'STOPPED_WAITING':
@@ -103,16 +102,16 @@ class StopMissionManager(Node):
 
             if elapsed >= self.wait_seconds:
                 self.state = 'RESUMING'
-                self.publish_outputs(True, self.approach_speed, self.state, False)
+                self.publish_outputs(True, self.approach_speed, False)
                 return
 
-            self.publish_outputs(True, 0.0, self.state, False)
+            self.publish_outputs(True, 0.0, False)
             return
 
         if self.state == 'RESUMING':
             self.stop_done = True
             self.state = 'DONE'
-            self.publish_outputs(False, self.cruise_speed, self.state, True)
+            self.publish_outputs(False, self.cruise_speed, True)
             return
 
 

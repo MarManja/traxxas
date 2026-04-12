@@ -1,0 +1,35 @@
+# =================================================================
+# StopRoutine.action
+# Ruta: traxxas_stop_interfaces/action/StopRoutine.action
+#
+# Define los tres bloques de una ROS2 Action separados por ---
+# GOAL     → lo que el cliente pide
+# RESULT   → lo que el servidor devuelve al terminar
+# FEEDBACK → actualizaciones mientras la acción corre
+# =================================================================
+
+# ── GOAL ──────────────────────────────────────────────────────────
+int32   total_stops         # Número de señales de alto a manejar (3)
+float32 cruise_pwm          # PWM velocidad crucero  ej. 2570.0
+float32 brake_pwm           # PWM freno completo     2457.0
+float32 prepare_dist_m      # Distancia inicio aproximación 0.60
+float32 stop_dist_m         # Distancia máxima a la señal   0.30
+float32 wait_time_s         # Segundos detenido             5.0
+float32 brake_duration_s    # Duración del frenado gradual  2.0
+float32 resume_duration_s   # Duración del arranque gradual 1.5
+
+---
+
+# ── RESULT ────────────────────────────────────────────────────────
+bool    success
+int32   stops_completed
+string  message
+
+---
+
+# ── FEEDBACK ──────────────────────────────────────────────────────
+int32   stops_completed       # Paradas procesadas hasta ahora
+string  state                 # SEARCHING|APPROACHING|BRAKING|STOPPED|RESUMING|COOLDOWN
+int32   current_pwm           # PWM que se manda en este momento
+float32 distance_to_sign_m    # Distancia al letrero (ZED depth)
+float32 elapsed_wait_s        # Segundos transcurridos en parada

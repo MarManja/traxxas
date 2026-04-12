@@ -32,6 +32,7 @@ setup(
             'steering_angle_node = traxxas_pose_estimation.steering_angle_node:main',
             'odom_traxxas_node = traxxas_pose_estimation.ackermann_odom_node:main',
             'pose_traxxas_node = traxxas_pose_estimation.pose_traxxas_node:main',
+            'record_csv_node = traxxas_pose_estimation.record_csv_node:main',
         ],
     },
 )

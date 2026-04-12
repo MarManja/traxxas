@@ -14,9 +14,9 @@ class AckermannOdomNode(Node):
     def __init__(self):
         super().__init__('ackermann_odom_node')
 
-        self.declare_parameter('wheelbase', 0.335)      # L (m)
-        self.declare_parameter('gear_ratio', 15.3)      # GR
-        self.declare_parameter('wheel_radius', 0.055)   # r (m)
+        self.declare_parameter('wheelbase', 0.324)      # L (m)
+        self.declare_parameter('gear_ratio', 17.72)      # GR
+        self.declare_parameter('wheel_radius', 0.0475)   # r (m)
 
         self.declare_parameter('frame_odom', 'odom')
         self.declare_parameter('frame_base', 'base_link')

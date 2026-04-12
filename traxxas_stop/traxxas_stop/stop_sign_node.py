@@ -1,16 +1,12 @@
-#!/usr/bin/env python3
-
 import math
 import cv2
 import numpy as np
-
 import rclpy
-from rclpy.node import Node
 
+from rclpy.node import Node
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32
-
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 
@@ -33,8 +29,6 @@ class StopSignDetector(Node):
         self.pub_detected_raw = self.create_publisher(Bool, '/traxxas/stop_sign/detected_raw', 10)
         self.pub_distance = self.create_publisher(Float32, '/traxxas/stop_sign/distance_m', 10)
         self.pub_area = self.create_publisher(Float32, '/traxxas/stop_sign/area', 10)
-        self.cx_pub = self.create_publisher(Float32, '/traxxas/stop_sign/cx', 10)
-        self.cy_pub = self.create_publisher(Float32, '/traxxas/stop_sign/cy', 10)
         self.pub_debug = self.create_publisher(Image, '/traxxas/stop_sign/debug_image', 10)
 
         self.color_sub = Subscriber(self, Image, self.color_topic)
@@ -151,10 +145,10 @@ class StopSignDetector(Node):
 
         return True, debug, mask, best
 
-    def get_depth_at_center(self, depth_img, cx, cy):
+    def get_depth_at_center(self, depth_img, cx: int, cy: int) -> float:
         h, w = depth_img.shape[:2]
 
-        if cx < 0 or cy < 0 or cx >= w or cy >= h:
+        if not (0 <= cx < w and 0 <= cy < h):            
             return float('nan')
 
         # Ventana pequeña para robustez
@@ -168,10 +162,7 @@ class StopSignDetector(Node):
         valid = patch[np.isfinite(patch)]
         valid = valid[valid > 0.0]
 
-        if valid.size == 0:
-            return float('nan')
-
-        return float(np.median(valid))
+        return float(np.median(valid)) if valid.size > 0 else float('nan')
 
     def synced_callback(self, color_msg, depth_msg):
         try:
@@ -194,46 +185,23 @@ class StopSignDetector(Node):
         self.pub_detected_raw.publish(raw_msg)
 
         area_msg = Float32()
-        cx_msg = Float32()
-        cy_msg = Float32()
         dist_msg = Float32()
 
         if detected and best is not None:
             distance_m = self.get_depth_at_center(depth, best['cx'], best['cy'])
             area_msg.data = float(best['area'])
-            cx_msg.data = float(best['cx'])
-            cy_msg.data = float(best['cy'])
             dist_msg.data = distance_m if math.isfinite(distance_m) else -1.0
 
-            if math.isfinite(distance_m):
-                cv2.putText(
-                    debug,
-                    f"distance = {distance_m:.2f} m",
-                    (best['x'], best['y'] + best['h'] + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (255, 255, 0),
-                    2
-                )
-            else:
-                cv2.putText(
-                    debug,
-                    "distance = invalid",
-                    (best['x'], best['y'] + best['h'] + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 165, 255),
-                    2
-                )
+            dist_text = (f"dist={distance_m:.2f} m"
+                         if math.isfinite(distance_m) else "dist=invalid")
+            cv2.putText(debug, dist_text,
+                        (best['x'], best['y'] + best['h'] + 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         else:
             area_msg.data = 0.0
-            cx_msg.data = -1.0
-            cy_msg.data = -1.0
             dist_msg.data = -1.0
 
         self.pub_area.publish(area_msg)
-        self.cx_pub.publish(cx_msg)
-        self.cy_pub.publish(cy_msg)
         self.pub_distance.publish(dist_msg)
 
         if self.debug_enabled:
