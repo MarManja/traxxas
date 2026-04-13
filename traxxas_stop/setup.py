@@ -37,6 +37,10 @@ setup(
             'crosswalk_node = traxxas_stop.crosswalk_node:main',
             'crosswalk_confirmation_node = traxxas_stop.crosswalk_confirmation_node:main',
             'stop_event_merger_node = traxxas_stop.stop_event_merger_node:main', 
+            # qcar
+            'qcar_stop_sign_node = traxxas_stop.qcar_stop_sign_node:main',
+            'qcar_pp_node = traxxas_stop.qcar_pp_node:main',
+            'qcar_stop_routine_server = traxxas_stop.qcar_stop_routine_action_server:main',
         ],
     },
 )
