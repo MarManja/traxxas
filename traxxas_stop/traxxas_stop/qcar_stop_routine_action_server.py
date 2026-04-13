@@ -96,12 +96,7 @@ class QCarStopRoutineActionServer(Node):
             self._cb_velocity, 10, callback_group=self._cb_group)
 
         # ── Publicadores ─────────────────────────────────────────────
-        self._pub_cmd    = self.create_publisher(
-            Vector3Stamped, '/qcar/user_command', 10)
-        self._pub_active = self.create_publisher(
-            Bool, '/traxxas/stop_sign/active', 10)
-        self._pub_done   = self.create_publisher(
-            Bool, '/traxxas/mission/done', 10)
+        self._pub_throttle = self.create_publisher(Float32, '/qcar/stop_throttle', 10)
 
         # ── Estado compartido ─────────────────────────────────────────
         self._confirmed  : bool  = False
@@ -138,17 +133,11 @@ class QCarStopRoutineActionServer(Node):
 
     def _pub_throttle_cmd(self, throttle: float, steering: float = 0.0):
         """
-        Publica en /qcar/user_command.
-        throttle : 0.0 (stop) a 0.06 (max). Crucero=0.04.
-        steering : -0.3 (derecha) a +0.3 (izquierda). Default=0.0.
+        Publica en /qcar/stop_throttle.
         """
-        msg = Vector3Stamped()
-        msg.header.stamp    = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'base_link'
-        msg.vector.x = float(throttle)
-        msg.vector.y = float(steering)
-        msg.vector.z = 0.0
-        self._pub_cmd.publish(msg)
+        msg = Float32()
+        msg.data = float(throttle)
+        self._pub_throttle.publish(msg)
 
     def _set_active(self, active: bool):
         msg = Bool(); msg.data = active

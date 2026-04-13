@@ -21,7 +21,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Vector3Stamped
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32
 
 import math
 import csv
@@ -91,11 +91,13 @@ class PurePursuitNode(Node):
         self.L         = self.get_parameter('wheelbase').get_parameter_value().double_value
         self.max_steer_cmd = 0.3
 
-        self.stop_active  = False
-        self.current_pose = None
-        self.state        = PPState()
-        self.target_ind   = 0
-        self.last_objective = None
+        self.stop_active       = False
+        self.current_pose      = None
+        self.state             = PPState()
+        self.target_ind        = 0
+        self.last_objective    = None
+        self.stop_active       = False
+        self.stop_throttle_cmd = 0.0
 
         self.generated_trajectory = []
         self.log_t = []; self.log_x = []; self.log_y = []
@@ -109,11 +111,14 @@ class PurePursuitNode(Node):
 
         self.target_course = TargetCourse(self.path, self.k_gain, self.lookahead) if self.path else None
 
-        self.create_subscription(Vector3Stamped, '/qcar/pose', self.pose_callback, 10)
+        self.create_subscription(Vector3Stamped, '/qcar/pose', 
+                                 self.pose_callback, 10)
 
-        # Señal del action server: True = él tiene el throttle
         self.create_subscription(Bool, '/traxxas/stop_sign/active',
                                  self.stop_active_callback, 10)
+        
+        self.create_subscription(Float32, '/qcar/stop_throttle',
+                                 self.stop_throttle_callback, 10)
 
         self.pub = self.create_publisher(Vector3Stamped, '/qcar/user_command', 10)
         self.timer = self.create_timer(0.02, self.control_loop)
@@ -132,9 +137,12 @@ class PurePursuitNode(Node):
         self.stop_active = bool(msg.data)
         if self.stop_active != was:
             if self.stop_active:
-                self.get_logger().warn('Action server activo — cediendo throttle.')
+                self.get_logger().warn('Action server activo.')
             else:
-                self.get_logger().info('Action server liberó throttle — reanudando PP.')
+                self.get_logger().info('Action server liberó — reanudando PP.')
+
+    def stop_throttle_callback(self, msg: Float32):
+        self.stop_throttle_cmd = float(msg.data) 
 
     def control_loop(self):
         now = self.get_clock().now()
@@ -151,9 +159,9 @@ class PurePursuitNode(Node):
         delta     = self.compute_pure_pursuit_delta()
         steer_cmd = max(-self.max_steer_cmd, min(self.max_steer_cmd, delta))
 
-        # Si el action server tiene el control, throttle=0
+        # Si el action server tiene el control, throttle cambia a lo del action
         # El watchdog no dispara porque el action server también publica
-        throttle = 0.0 if self.stop_active else self.v_ref
+        throttle = self.stop_throttle_cmd if self.stop_active else self.v_ref
 
         cmd = Vector3Stamped()
         cmd.header.stamp    = now.to_msg()
