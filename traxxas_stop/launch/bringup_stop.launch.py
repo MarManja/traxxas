@@ -64,6 +64,8 @@ def generate_launch_description():
  
         # -- Pure Pursuit ---------------------------------------------
         DeclareLaunchArgument('path_csv',      default_value=''),
+        DeclareLaunchArgument('trayectoria',   default_value='/home/movimiento/Workspaces/traxxas/src/traxxas_pose_estimation/trayectorias/traxxas_waypoints_1.csv',
+                              description='Ruta al CSV con waypoints'),
         DeclareLaunchArgument('circle_radius', default_value='0.8'),
         DeclareLaunchArgument('circle_points', default_value='300'),
         DeclareLaunchArgument('lookahead',     default_value='0.15'),
@@ -203,6 +205,7 @@ def generate_launch_description():
                 output='screen',
                 parameters=[{
                     'path_csv':        LaunchConfiguration('path_csv'),
+                    #'path_csv':        LaunchConfiguration('trayectoria'),
                     'circle_radius':   LaunchConfiguration('circle_radius'),
                     'circle_points':   LaunchConfiguration('circle_points'),
                     'lookahead':       LaunchConfiguration('lookahead'),
