@@ -41,6 +41,7 @@ setup(
             'qcar_stop_sign_node = traxxas_stop.qcar_stop_sign_node:main',
             'qcar_pp_node = traxxas_stop.qcar_pp_node:main',
             'qcar_stop_routine_server = traxxas_stop.qcar_stop_routine_action_server:main',
+            'qcar_routine_client = traxxas_stop.qcar_routine_client:main',
         ],
     },
 )

@@ -44,7 +44,7 @@
 
  Tópicos publicados
  ───────────────────
-   /qcar/user_command              Vector3Stamped  (throttle + steering)
+   /qcar/stop_throttle             Float32
    /traxxas/stop_sign/active       Bool
    /traxxas/mission/done           Bool
 =======================================================================
@@ -58,7 +58,7 @@ from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import Vector3Stamped
-from std_msgs.msg import Bool, Float32
+from std_msgs.msg import Bool, Float32, String
 from traxxas_stop_interfaces.action import StopRoutine
 from traxxas_stop.qcar_stop_maneuvers import StopManeuver
 
@@ -90,13 +90,14 @@ class QCarStopRoutineActionServer(Node):
             Float32, '/traxxas/stop_event/distance_m',
             self._cb_distance, 10, callback_group=self._cb_group)
 
-        # /qcar/velocity — Vector3Stamped, vector.x = velocidad lineal m/s
         self.create_subscription(
             Vector3Stamped, '/qcar/velocity',
-            self._cb_velocity, 10, callback_group=self._cb_group)
+            self._cb_velocity, 10)
 
         # ── Publicadores ─────────────────────────────────────────────
         self._pub_throttle = self.create_publisher(Float32, '/qcar/stop_throttle', 10)
+        self._pub_active   = self.create_publisher(Bool, '/traxxas/stop_sign/active', 10)
+        self._pub_done     = self.create_publisher(Bool, '/traxxas/mission/done', 10)
 
         # ── Estado compartido ─────────────────────────────────────────
         self._confirmed  : bool  = False
@@ -114,7 +115,7 @@ class QCarStopRoutineActionServer(Node):
         self.get_logger().info(' QCAR STOP ROUTINE ACTION SERVER iniciado')
         self.get_logger().info('  Acción:  /stop_routine')
         self.get_logger().info('  Encoder: /qcar/velocity (Vector3Stamped)')
-        self.get_logger().info('  Cmd:     /qcar/user_command (Vector3Stamped)')
+        self.get_logger().info('  Cmd:     /qcar/stop_throttle (Float32)')
         self.get_logger().info('=' * 55)
 
     # ── Callbacks ─────────────────────────────────────────────────────
@@ -126,14 +127,14 @@ class QCarStopRoutineActionServer(Node):
         self._distance_m = float(msg.data)
 
     def _cb_velocity(self, msg: Vector3Stamped):
-        # El encoder del QCar reporta velocidad lineal en vector.x
         self._velocity = float(msg.vector.x)
-
+    
     # ── Helpers de publicación ────────────────────────────────────────
 
-    def _pub_throttle_cmd(self, throttle: float, steering: float = 0.0):
+    def _pub_throttle_cmd(self, throttle: float):
         """
         Publica en /qcar/stop_throttle.
+        El Pure Pursuit Node se encarga de leerlo.
         """
         msg = Float32()
         msg.data = float(throttle)
@@ -152,7 +153,7 @@ class QCarStopRoutineActionServer(Node):
         fb = StopRoutine.Feedback()
         fb.state              = state
         fb.stops_completed    = int(stops_done)
-        fb.current_pwm        = int(throttle_cmd * 10000)  # escala para compatibilidad
+        fb.current_pwm        = int(throttle_cmd * 10000)  # escala para compatibilidad legacy
         fb.distance_to_sign_m = float(self._distance_m)
         fb.elapsed_wait_s     = float(elapsed_wait)
         goal_handle.publish_feedback(fb)
@@ -162,15 +163,13 @@ class QCarStopRoutineActionServer(Node):
     def _execute_cb(self, goal_handle):
         g = goal_handle.request
         total_stops  = int(g.total_stops)
-        cruise_cmd   = float(g.cruise_pwm)   # reutilizamos el campo, pero ahora es 0.04
+        cruise_cmd   = float(g.cruise_pwm)   # 0.04
         prepare_dist = float(g.prepare_dist_m)
         stop_dist    = float(g.stop_dist_m)
         wait_time    = float(g.wait_time_s)
         brake_dur    = float(g.brake_duration_s)
         resume_dur   = float(g.resume_duration_s)
 
-        # Si el cliente manda cruise_pwm en valores PWM legacy (>1.0),
-        # convertir automáticamente para no romper el cliente existente.
         if cruise_cmd > 1.0:
             self.get_logger().warn(
                 f'cruise_pwm={cruise_cmd:.0f} parece valor PWM legacy. '
@@ -220,6 +219,8 @@ class QCarStopRoutineActionServer(Node):
 
             # ── APPROACHING ──────────────────────────────────────────
             elif state == self.ST_APPROACHING:
+                self._set_active(True)
+
                 if dist > 0.0:
                     # Interpolación lineal: prepare_dist→cruise, stop_dist→0
                     if dist >= prepare_dist:
@@ -228,12 +229,12 @@ class QCarStopRoutineActionServer(Node):
                         current_throttle = 0.0
                     else:
                         t = (dist - stop_dist) / max(prepare_dist - stop_dist, 1e-6)
-                        # mínimo de aproximación = 60% del crucero para no parar antes
                         min_approach = cruise_cmd * 0.6
                         current_throttle = min_approach + t * (cruise_cmd - min_approach)
 
                     self._pub_throttle_cmd(current_throttle)
 
+                    # Condición 1: Llegamos a la distancia de parada deseada
                     if dist <= stop_dist:
                         self.get_logger().info(
                             f'[ACTION] dist={dist:.3f} m ≤ {stop_dist:.2f} m → BRAKING')
@@ -247,19 +248,30 @@ class QCarStopRoutineActionServer(Node):
                         )
                         maneuver.start()
                 else:
-                    # Sin distancia válida: avanzar lento
+                    # Sin distancia válida temporalmente: avanzar lento
                     current_throttle = cruise_cmd * 0.6
                     self._pub_throttle_cmd(current_throttle)
 
-                # Señal perdida antes de llegar → abortar acercamiento
+                # Condición 2: Punto Ciego (Latch de frenado)
+                # Si la cámara pierde la señal pero ya estábamos en APPROACHING, 
+                # asumimos que la señal salió del encuadre y forzamos el frenado a ciegas.
                 if not self._confirmed:
                     self.get_logger().warn(
-                        '[ACTION] Señal perdida en APPROACHING → SEARCHING')
-                    state = self.ST_SEARCHING
-                    self._set_active(False)
+                        '[ACTION] Señal perdida en punto ciego → Forzando BRAKING')
+                    state = self.ST_BRAKING
+                    maneuver = StopManeuver(
+                        cruise_cmd = cruise_cmd,
+                        start_cmd  = current_throttle, # Iniciamos rampa donde se haya quedado
+                        brake_dur  = brake_dur,
+                        wait_s     = wait_time,
+                        resume_dur = resume_dur,
+                    )
+                    maneuver.start()
 
             # ── BRAKING / STOPPED / RESUMING ─────────────────────────
             elif state in (self.ST_BRAKING, self.ST_STOPPED, self.ST_RESUMING):
+                
+                # TU MAGIA DEL ENCODER: v es self._velocity, extraída directamente arriba
                 current_throttle, maneuver_phase = maneuver.tick(v)
                 state = maneuver_phase
 

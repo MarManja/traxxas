@@ -5,9 +5,12 @@ import rclpy
 
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32
+from rclpy.executors import MultiThreadedExecutor
 
 
 class StopSignDetector(Node):
@@ -42,8 +45,11 @@ class StopSignDetector(Node):
         self.pub_debug = self.create_publisher(Image, '/traxxas/stop_sign/debug_image', 10)
 
         # Callbacks independientes — sin sincronizador
-        self.create_subscription(Image, self.color_topic, self.color_callback, sensor_qos)
-        self.create_subscription(Image, self.depth_topic, self.depth_callback, sensor_qos)
+        self.cb_group = ReentrantCallbackGroup()
+        self.create_subscription(Image, self.color_topic, self.color_callback, sensor_qos,
+            callback_group=self.cb_group)
+        self.create_subscription(Image, self.depth_topic, self.depth_callback, sensor_qos,
+            callback_group=self.cb_group)
 
         # Timer que procesa a 10 Hz con lo que haya disponible
         self.timer = self.create_timer(0.1, self.process)
@@ -64,6 +70,7 @@ class StopSignDetector(Node):
 
         try:
             frame = self.bridge.imgmsg_to_cv2(self.latest_color, desired_encoding='bgr8')
+            frame = cv2.resize(frame, (320, 240))
         except Exception as e:
             self.get_logger().error(f'Error convirtiendo color: {e}')
             return
@@ -72,6 +79,7 @@ class StopSignDetector(Node):
         if self.latest_depth is not None:
             try:
                 depth = self.bridge.imgmsg_to_cv2(self.latest_depth, desired_encoding='passthrough')
+                depth = cv2.resize(depth, (320, 240))
             except Exception as e:
                 self.get_logger().error(f'Error convirtiendo depth: {e}')
 
@@ -202,6 +210,8 @@ class StopSignDetector(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = StopSignDetector()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
