@@ -60,7 +60,7 @@ def generate_launch_description():
         DeclareLaunchArgument('dir_center',    default_value='2642'),
         DeclareLaunchArgument('dir_max_right', default_value='3276'),
         DeclareLaunchArgument('dir_min_left',  default_value='1669'),
-        DeclareLaunchArgument('max_steer_rad', default_value='0.436'),
+        DeclareLaunchArgument('max_steer_rad', default_value='0.349'), # rad maximo de giro (20° aprox),
  
         # -- Pure Pursuit ---------------------------------------------
         DeclareLaunchArgument('path_csv',      default_value=''),
